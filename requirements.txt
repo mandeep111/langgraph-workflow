@@ -1,0 +1,7 @@
+langgraph
+openai
+elevenlabs
+pandas
+openpyxl
+beautifulsoup4
+requests
