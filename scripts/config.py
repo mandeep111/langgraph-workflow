@@ -3,6 +3,7 @@ import os
 class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+    VIDEO_OUTPUT_DIR = os.getenv("VIDEO_OUTPUT_DIR")
     ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")  # Default Adam voice
     UNSPLASH_API_KEY = os.getenv("UNSPLASH_API_KEY", "")
     EXCEL_FILE_PATH = "ai_tech_news_database.xlsx"  # Persistent Excel file

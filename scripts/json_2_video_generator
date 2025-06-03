@@ -1,0 +1,488 @@
+from typing import List, Dict, Optional
+import subprocess
+import json
+import os
+from datetime import datetime
+import re
+import requests
+from json2video import Json2Video
+from config import Config
+
+class VideoGeneratorV2:
+    
+    def __init__(self, json2video_api_key: str):
+        """Initialize with Json2Video API key"""
+        self.json2video_api_key = json2video_api_key
+        self.json2video = Json2Video(api_key=json2video_api_key)
+        self.output_dir = Config.VIDEO_OUTPUT_DIR
+        if not self.output_dir:
+            self.output_dir = os.path.join(os.getcwd(), 'output_videos')
+        os.makedirs(self.output_dir, exist_ok=True)
+    
+    def create_youtube_shorts_video(self, script: str, audio_path: str, images: List[Dict] = None) -> str:
+        """Create a YouTube Shorts video using Json2Video for dynamic content generation"""
+        try:
+            video_filename = os.path.join(self.output_dir, f"youtube_shorts_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+            
+            # Clean and analyze script
+            clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')
+            
+            # Get audio duration
+            audio_duration = self._get_audio_duration(audio_path) if audio_path else 30.0
+            
+            # Create JSON template for Json2Video
+            video_json = self._create_video_json_template(clean_script, audio_duration, audio_path)
+            
+            # Generate video using Json2Video API
+            video_url = self._generate_video_with_json2video(video_json)
+            
+            if video_url:
+                # Download the generated video
+                downloaded_video = self._download_video(video_url, video_filename)
+                if downloaded_video:
+                    print(f"YouTube Shorts video created successfully: {downloaded_video}")
+                    return downloaded_video
+            
+            # Fallback to manual creation if Json2Video fails
+            print("Json2Video generation failed, falling back to manual creation...")
+            return self._create_fallback_video(script, audio_path)
+            
+        except Exception as e:
+            print(f"Error creating YouTube Shorts video with Json2Video: {e}")
+            return self._create_fallback_video(script, audio_path)
+
+    def _get_audio_duration(self, audio_path: str) -> float:
+        """Get the duration of the audio file in seconds"""
+        try:
+            if not audio_path or not os.path.exists(audio_path):
+                return 30.0
+                
+            cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', audio_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            data = json.loads(result.stdout)
+            return float(data['format']['duration'])
+        except Exception as e:
+            print(f"Error getting audio duration: {e}")
+            return 30.0
+
+    def _create_video_json_template(self, script: str, duration: float, audio_path: str) -> Dict:
+        """Create JSON template for Json2Video based on script content"""
+        
+        # Analyze script to determine theme and content type
+        theme = self._analyze_script_theme(script)
+        
+        # Create subtitle segments
+        subtitle_segments = self._create_subtitle_segments(script, duration)
+        
+        # Build Json2Video template
+        video_json = {
+            "width": 1080,
+            "height": 1920,  # 9:16 aspect ratio for YouTube Shorts
+            "duration": duration,
+            "fps": 30,
+            "background": self._get_background_config(theme),
+            "scenes": self._create_scenes(subtitle_segments, theme, duration),
+            "audio": {
+                "src": audio_path if audio_path and os.path.exists(audio_path) else None,
+                "volume": 1.0
+            },
+            "watermark": {
+                "text": "AI Generated",
+                "position": "bottom-right",
+                "opacity": 0.3,
+                "size": 20
+            }
+        }
+        
+        return video_json
+
+    def _analyze_script_theme(self, script: str) -> str:
+        """Analyze script content to determine appropriate theme and visuals"""
+        script_lower = script.lower()
+        
+        # Technology and AI themes
+        if any(word in script_lower for word in ['ai', 'artificial intelligence', 'technology', 'tech', 'software', 'digital', 'computer', 'robot']):
+            return 'technology'
+        
+        # Business and finance themes
+        elif any(word in script_lower for word in ['business', 'market', 'finance', 'economy', 'investment', 'money', 'company', 'startup']):
+            return 'business'
+        
+        # Science themes
+        elif any(word in script_lower for word in ['science', 'research', 'study', 'discovery', 'experiment', 'scientific']):
+            return 'science'
+        
+        # Health themes
+        elif any(word in script_lower for word in ['health', 'medical', 'medicine', 'doctor', 'hospital', 'treatment']):
+            return 'health'
+        
+        # Education themes
+        elif any(word in script_lower for word in ['education', 'learning', 'school', 'university', 'student', 'knowledge']):
+            return 'education'
+        
+        # News themes
+        elif any(word in script_lower for word in ['news', 'breaking', 'report', 'update', 'announcement']):
+            return 'news'
+        
+        # Default theme
+        else:
+            return 'general'
+
+    def _get_background_config(self, theme: str) -> Dict:
+        """Get background configuration based on theme"""
+        backgrounds = {
+            'technology': {
+                "type": "gradient",
+                "colors": ["#0f0f23", "#1a1a2e", "#16213e"],
+                "direction": "diagonal",
+                "animation": "pulse"
+            },
+            'business': {
+                "type": "gradient", 
+                "colors": ["#1e3c72", "#2a5298", "#1e3c72"],
+                "direction": "vertical",
+                "animation": "slide"
+            },
+            'science': {
+                "type": "gradient",
+                "colors": ["#134e5e", "#71b280", "#134e5e"],
+                "direction": "radial",
+                "animation": "zoom"
+            },
+            'health': {
+                "type": "gradient",
+                "colors": ["#667eea", "#764ba2", "#667eea"],
+                "direction": "diagonal",
+                "animation": "fade"
+            },
+            'education': {
+                "type": "gradient",
+                "colors": ["#f093fb", "#f5576c", "#f093fb"],
+                "direction": "horizontal",
+                "animation": "rotate"
+            },
+            'news': {
+                "type": "gradient",
+                "colors": ["#ff416c", "#ff4b2b", "#ff416c"],
+                "direction": "vertical",
+                "animation": "pulse"
+            },
+            'general': {
+                "type": "gradient",
+                "colors": ["#434343", "#000000", "#434343"],
+                "direction": "diagonal",
+                "animation": "fade"
+            }
+        }
+        
+        return backgrounds.get(theme, backgrounds['general'])
+
+    def _create_subtitle_segments(self, script: str, duration: float) -> List[Dict]:
+        """Create subtitle segments with timing"""
+        words = script.split()
+        if not words:
+            return []
+        
+        segments = []
+        words_per_segment = max(8, min(15, len(words) // max(1, int(duration / 3))))
+        segment_duration = duration / max(1, len(words) // words_per_segment)
+        
+        current_time = 0.0
+        for i in range(0, len(words), words_per_segment):
+            segment_words = words[i:i + words_per_segment]
+            segments.append({
+                'text': ' '.join(segment_words),
+                'start_time': current_time,
+                'end_time': min(current_time + segment_duration, duration),
+                'duration': min(segment_duration, duration - current_time)
+            })
+            current_time += segment_duration
+            
+            if current_time >= duration:
+                break
+        
+        return segments
+
+    def _create_scenes(self, subtitle_segments: List[Dict], theme: str, total_duration: float) -> List[Dict]:
+        """Create scenes for Json2Video based on subtitle segments and theme"""
+        scenes = []
+        
+        # Theme-specific visual elements
+        visual_elements = self._get_theme_visual_elements(theme)
+        
+        for i, segment in enumerate(subtitle_segments):
+            scene = {
+                "start": segment['start_time'],
+                "duration": segment['duration'],
+                "elements": [
+                    # Background animation element
+                    {
+                        "type": "shape",
+                        "shape": "rectangle",
+                        "width": 1080,
+                        "height": 1920,
+                        "color": "transparent",
+                        "animation": {
+                            "type": visual_elements['background_animation'],
+                            "duration": segment['duration']
+                        }
+                    },
+                    # Main text element
+                    {
+                        "type": "text",
+                        "text": segment['text'],
+                        "font": {
+                            "family": "Arial Bold",
+                            "size": 48,
+                            "color": "#ffffff",
+                            "weight": "bold"
+                        },
+                        "position": {
+                            "x": 540,  # Center horizontally
+                            "y": 1400,  # Lower third for mobile viewing
+                            "alignment": "center"
+                        },
+                        "background": {
+                            "color": "rgba(0,0,0,0.7)",
+                            "padding": 20,
+                            "borderRadius": 10
+                        },
+                        "animation": {
+                            "type": "fadeIn",
+                            "duration": 0.5
+                        },
+                        "wordWrap": {
+                            "enabled": True,
+                            "maxWidth": 900
+                        }
+                    },
+                    # Decorative elements based on theme
+                    *self._get_theme_decorative_elements(theme, i)
+                ]
+            }
+            scenes.append(scene)
+        
+        return scenes
+
+    def _get_theme_visual_elements(self, theme: str) -> Dict:
+        """Get visual elements configuration for theme"""
+        elements = {
+            'technology': {
+                'background_animation': 'matrix',
+                'accent_color': '#00ff00',
+                'secondary_color': '#0066cc'
+            },
+            'business': {
+                'background_animation': 'slideUp',
+                'accent_color': '#gold',
+                'secondary_color': '#navy'
+            },
+            'science': {
+                'background_animation': 'particle',
+                'accent_color': '#00ccff',
+                'secondary_color': '#66ff99'
+            },
+            'health': {
+                'background_animation': 'pulse',
+                'accent_color': '#ff6b6b',
+                'secondary_color': '#4ecdc4'
+            },
+            'education': {
+                'background_animation': 'bounce',
+                'accent_color': '#ffa726',
+                'secondary_color': '#ab47bc'
+            },
+            'news': {
+                'background_animation': 'flash',
+                'accent_color': '#ff5722',
+                'secondary_color': '#ffeb3b'
+            },
+            'general': {
+                'background_animation': 'fade',
+                'accent_color': '#ffffff',
+                'secondary_color': '#cccccc'
+            }
+        }
+        
+        return elements.get(theme, elements['general'])
+
+    def _get_theme_decorative_elements(self, theme: str, scene_index: int) -> List[Dict]:
+        """Get decorative elements for specific theme"""
+        visual_config = self._get_theme_visual_elements(theme)
+        
+        decorative_elements = []
+        
+        # Add theme-specific decorative elements
+        if theme == 'technology':
+            decorative_elements.extend([
+                {
+                    "type": "shape",
+                    "shape": "circle",
+                    "width": 100,
+                    "height": 100,
+                    "color": visual_config['accent_color'],
+                    "position": {"x": 100, "y": 200 + (scene_index * 50)},
+                    "animation": {"type": "rotate", "duration": 3}
+                },
+                {
+                    "type": "shape",
+                    "shape": "rectangle",
+                    "width": 200,
+                    "height": 10,
+                    "color": visual_config['secondary_color'],
+                    "position": {"x": 880, "y": 300},
+                    "animation": {"type": "slideLeft", "duration": 2}
+                }
+            ])
+        
+        elif theme == 'business':
+            decorative_elements.append({
+                "type": "shape",
+                "shape": "triangle",
+                "width": 80,
+                "height": 80,
+                "color": visual_config['accent_color'],
+                "position": {"x": 50, "y": 150},
+                "animation": {"type": "pulse", "duration": 2}
+            })
+        
+        elif theme == 'news':
+            decorative_elements.extend([
+                {
+                    "type": "text",
+                    "text": "BREAKING",
+                    "font": {"family": "Arial Bold", "size": 32, "color": visual_config['accent_color']},
+                    "position": {"x": 540, "y": 200, "alignment": "center"},
+                    "animation": {"type": "blink", "duration": 1}
+                },
+                {
+                    "type": "shape",
+                    "shape": "rectangle",
+                    "width": 1080,
+                    "height": 5,
+                    "color": visual_config['accent_color'],
+                    "position": {"x": 0, "y": 250},
+                    "animation": {"type": "slideRight", "duration": 1.5}
+                }
+            ])
+        
+        return decorative_elements
+
+    def _generate_video_with_json2video(self, video_json: Dict) -> Optional[str]:
+        """Generate video using Json2Video API"""
+        try:
+            print("Generating video with Json2Video API...")
+            
+            # Create video project
+            response = self.json2video.create_video(video_json)
+            
+            if response and 'id' in response:
+                project_id = response['id']
+                print(f"Video project created with ID: {project_id}")
+                
+                # Poll for completion
+                video_url = self._wait_for_video_completion(project_id)
+                return video_url
+            else:
+                print("Failed to create video project")
+                return None
+                
+        except Exception as e:
+            print(f"Error generating video with Json2Video: {e}")
+            return None
+
+    def _wait_for_video_completion(self, project_id: str, max_wait_time: int = 300) -> Optional[str]:
+        """Wait for video generation to complete and return download URL"""
+        import time
+        
+        start_time = time.time()
+        while time.time() - start_time < max_wait_time:
+            try:
+                status = self.json2video.get_project_status(project_id)
+                
+                if status.get('status') == 'completed':
+                    return status.get('download_url')
+                elif status.get('status') == 'failed':
+                    print(f"Video generation failed: {status.get('error', 'Unknown error')}")
+                    return None
+                
+                print(f"Video generation in progress... Status: {status.get('status', 'unknown')}")
+                time.sleep(10)  # Wait 10 seconds before checking again
+                
+            except Exception as e:
+                print(f"Error checking video status: {e}")
+                time.sleep(10)
+        
+        print("Video generation timed out")
+        return None
+
+    def _download_video(self, video_url: str, output_filename: str) -> Optional[str]:
+        """Download the generated video from URL"""
+        try:
+            print(f"Downloading video from: {video_url}")
+            
+            response = requests.get(video_url, stream=True, timeout=60)
+            response.raise_for_status()
+            
+            with open(output_filename, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            print(f"Video downloaded successfully: {output_filename}")
+            return output_filename
+            
+        except Exception as e:
+            print(f"Error downloading video: {e}")
+            return None
+
+    def _create_fallback_video(self, script: str, audio_path: str) -> str:
+        """Create a simple fallback video using FFmpeg when Json2Video fails"""
+        try:
+            video_filename = os.path.join(self.output_dir, f"fallback_shorts_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+            
+            # Clean script for display
+            clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')[:150] + "..."
+            escaped_text = re.sub(r'[^\w\s.,!?\-]', ' ', clean_script)
+            
+            if audio_path and os.path.exists(audio_path):
+                audio_duration = self._get_audio_duration(audio_path)
+                
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'lavfi', '-i', f'color=c=#1a1a2e:s=1080x1920:d={audio_duration}:r=30',
+                    '-i', audio_path,
+                    '-vf', (
+                        f"drawtext=text='AI VIDEO UPDATE':fontcolor=white:fontsize=60:"
+                        f"x=(w-text_w)/2:y=400:fontfile=/System/Library/Fonts/Arial.ttf,"
+                        f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=36:"
+                        f"x=(w-text_w)/2:y=(h/2):fontfile=/System/Library/Fonts/Arial.ttf"
+                    ),
+                    '-c:v', 'libx264',
+                    '-c:a', 'aac',
+                    '-preset', 'fast',
+                    '-pix_fmt', 'yuv420p',
+                    '-shortest',
+                    video_filename
+                ]
+            else:
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'lavfi', '-i', 'color=c=#1a1a2e:s=1080x1920:d=30:r=30',
+                    '-vf', (
+                        f"drawtext=text='AI VIDEO UPDATE':fontcolor=white:fontsize=60:"
+                        f"x=(w-text_w)/2:y=400,"
+                        f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=36:"
+                        f"x=(w-text_w)/2:y=(h/2)"
+                    ),
+                    '-c:v', 'libx264',
+                    '-pix_fmt', 'yuv420p',
+                    video_filename
+                ]
+            
+            subprocess.run(cmd, check=True)
+            print(f"Fallback video created: {video_filename}")
+            return video_filename
+            
+        except Exception as e:
+            print(f"Fallback video creation failed: {e}")
+            return ""
