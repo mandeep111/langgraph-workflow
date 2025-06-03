@@ -6,7 +6,6 @@ from datetime import datetime
 import re
 from config import Config
 
-
 class VideoGenerator:
     
     def __init__(self):

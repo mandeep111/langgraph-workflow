@@ -3,10 +3,15 @@ from datetime import datetime
 from typing import List, Dict
 from config import Config
 import re
+import os
 
 class ScriptGenerator:
     def __init__(self):
         openai.api_key = Config.OPENAI_API_KEY
+        self.output_dir = Config.VIDEO_OUTPUT_DIR
+        if not self.output_dir:
+            self.output_dir = os.path.join(os.getcwd(), 'output_videos')
+        os.makedirs(self.output_dir, exist_ok=True)
     
     def generate_youtube_shorts_script(self, articles: List[Dict]) -> str:
         """Generate YouTube Shorts script from articles (optimized for 9:16 vertical format)"""
@@ -57,7 +62,7 @@ class ScriptGenerator:
         script = self._clean_script_for_audio(script)
         
         # Save script with timestamp to ensure uniqueness
-        script_filename = f"youtube_shorts_script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        script_filename = os.path.join(self.output_dir, f"youtube_shorts_script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
         with open(script_filename, 'w', encoding='utf-8') as f:
             f.write(f"Generated at: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("="*50 + "\n\n")

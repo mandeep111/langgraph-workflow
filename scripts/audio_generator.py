@@ -19,11 +19,16 @@ except ImportError:
 class AudioGenerator:
     def __init__(self):
         self.client = None
+        self.output_dir = Config.VIDEO_OUTPUT_DIR
         if Config.ELEVENLABS_API_KEY and ELEVENLABS_AVAILABLE:
             try:
                 self.client = ElevenLabs(api_key=Config.ELEVENLABS_API_KEY)
             except Exception as e:
                 print(f"Failed to initialize ElevenLabs client: {e}")
+          
+        if not self.output_dir:
+            self.output_dir = os.path.join(os.getcwd(), 'output_videos')
+        os.makedirs(self.output_dir, exist_ok=True)
     
     def generate_audio(self, script: str, voice_id: str = None) -> str:
         """Generate audio using ElevenLabs with configurable voice"""
@@ -48,7 +53,7 @@ class AudioGenerator:
                 model="eleven_monolingual_v1"
             )
             
-            audio_filename = f"youtube_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+            audio_filename = os.path.join(self.output_dir, f"youtube_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3")
             
             # Save the audio
             with open(audio_filename, 'wb') as f:
@@ -112,7 +117,7 @@ class AudioGenerator:
             print(f"Could not generate audio: {e}")
             # Create a silent audio file as last resort
             try:
-                silent_filename = f"silent_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
+                silent_filename = os.path.join(self.output_dir, f"silent_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3")
                 subprocess.run([
                     'ffmpeg', '-f', 'lavfi', '-i', 'anullsrc=duration=90', 
                     '-c:a', 'mp3', silent_filename, '-y'
