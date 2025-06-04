@@ -7,6 +7,7 @@ class Config:
     ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")  # Default Adam voice
     UNSPLASH_API_KEY = os.getenv("UNSPLASH_API_KEY", "")
     EXCEL_FILE_PATH = os.path.join(VIDEO_OUTPUT_DIR, "ai_tech_news_database.xlsx")  # Use VIDEO_OUTPUT_DIR as base
+    JSON2VIDEO_API_KEY = os.getenv("JSON2VIDEO_API_KEY")
     NEWS_SOURCES = [
         "https://techcrunch.com/category/artificial-intelligence/",
         "https://www.theverge.com/ai-artificial-intelligence",

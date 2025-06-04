@@ -34,7 +34,7 @@ class ImageDownloader:
                     'photographer': photo['user']['name'],
                     'query': query
                 })
-            
+            print(f"Found {len(images)} images for query '{query}'")
             return images
         except Exception as e:
             print(f"Error searching Unsplash: {e}")
@@ -65,7 +65,7 @@ class ImageDownloader:
                     'photographer': hit.get('user', 'Pixabay'),
                     'query': query
                 })
-            
+            print(f"Found {len(images)} images for query '{query}'")
             return images
         except Exception as e:
             print(f"Error with fallback images: {e}")

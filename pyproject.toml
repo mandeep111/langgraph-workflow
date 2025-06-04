@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.13.4",
     "elevenlabs>=2.1.0",
+    "json2video>=2.0.0",
     "langgraph>=0.4.8",
     "openai>=1.83.0",
     "openpyxl>=3.1.5",

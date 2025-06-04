@@ -6,6 +6,8 @@ from video_generator import VideoGenerator
 from config import Config
 from news import NewsState
 from news_scrapper import NewsScrapper
+from image_downloader import ImageDownloader
+from json_video_generator import VideoGeneratorV2
 import asyncio
 
 from langgraph.graph import StateGraph, END
@@ -59,10 +61,36 @@ def generate_audio_node(state: NewsState) -> NewsState:
     state["audio_path"] = audio_path
     return state
 
+def download_images_node(state: NewsState) -> NewsState:
+    """Download images for video"""
+    image_gen = ImageDownloader()
+    downloaded_images = []
+
+    # Use the titles of the processed articles as search queries
+    for article in state["processed_articles"]:
+        query = article.get("title", "technology")  # Default to "technology" if no title
+        image_results = image_gen.search_unsplash_images(query, count=3)  # Search for 3 images
+
+        for idx, image_data in enumerate(image_results):
+            filename = f"{query.replace(' ', '_')}_{idx + 1}.jpg"  # Create a unique filename
+            downloaded_path = image_gen.download_image(image_data, filename)
+            downloaded_images.append(downloaded_path)
+
+    # Save the downloaded image paths in the state
+    state["downloaded_images"] = downloaded_images
+    return state
+
 def generate_video_node(state: NewsState) -> NewsState:
     """Generate YouTube Shorts video with audio"""
     video_gen = VideoGenerator()
-    video_path = video_gen.create_youtube_shorts_video(state["script_content"], state["audio_path"])
+    video_path = video_gen.create_youtube_shorts_video(state["script_content"], state["audio_path"], state["downloaded_images"])
+    state["video_path"] = video_path
+    return state
+
+def generate_json_2_video_node(state: NewsState) -> NewsState:
+    """Generate YouTube Shorts video with audio"""
+    json_video_gen = VideoGeneratorV2()
+    video_path = json_video_gen.create_youtube_shorts_video(state["script_content"], state["audio_path"])
     state["video_path"] = video_path
     return state
 
@@ -77,7 +105,11 @@ def create_workflow():
     workflow.add_node("excel", create_excel_node)
     workflow.add_node("script", generate_script_node)
     workflow.add_node("audio", generate_audio_node)
-    workflow.add_node("video", generate_video_node)
+    # workflow.add_node("download_images", download_images_node)
+    # use it with unsplash images
+    # workflow.add_node("video", generate_video_node) 
+    workflow.add_node("video", generate_json_2_video_node)
+    
     
     # Define edges
     workflow.add_edge("scrape", "process")
@@ -85,6 +117,8 @@ def create_workflow():
     workflow.add_edge("excel", "script")
     workflow.add_edge("script", "audio")
     workflow.add_edge("audio", "video")
+    # workflow.add_edge("audio", "download_images")
+    # workflow.add_edge("download_images", "video")
     workflow.add_edge("video", END)
     
     # Set entry point
@@ -129,13 +163,18 @@ def run_simple_pipeline():
         print("🎵 Generating audio...")
         state = generate_audio_node(state)
         
-        # Step 6: Generate video
+        # Step 6: Generate images
+        print("🎵 Generating images...")
+        state = download_images_node(state)
+        
+        # Step 7: Generate video
         print("🎥 Creating video...")
         state = generate_video_node(state)
         
         print("\n✅ Pipeline completed successfully!")
         print(f"📊 Excel Report: {state.get('excel_path', 'Not created')}")
         print(f"🎵 Audio: {state.get('audio_path', 'Not created')}")
+        # print(f"🎵 Image: {state.get('downloaded_images', 'Not created')}")
         print(f"🎥 Video: {state.get('video_path', 'Not created')}")
         
         return state

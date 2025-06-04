@@ -92,7 +92,7 @@ class AudioGenerator:
         """Create a placeholder audio file or use text-to-speech alternatives"""
         try:
             # Try using macOS built-in say command (if available)
-            audio_filename = f"youtube_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.aiff"
+            audio_filename = os.path.join(self.output_dir, f"youtube_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.aiff")
             clean_script = self._clean_script_for_audio(script).replace('\n', ' ')
             
             # Use macOS say command to generate audio

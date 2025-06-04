@@ -5,51 +5,90 @@ import os
 from datetime import datetime
 import re
 import requests
-from json2video import Json2Video
+import time
 from config import Config
 
 class VideoGeneratorV2:
     
-    def __init__(self, json2video_api_key: str):
+    def __init__(self):
         """Initialize with Json2Video API key"""
-        self.json2video_api_key = json2video_api_key
-        self.json2video = Json2Video(api_key=json2video_api_key)
+        self.json2video_api_key = Config.JSON2VIDEO_API_KEY
+        if not self.json2video_api_key:
+            raise ValueError("JSON2VIDEO_API_KEY is not set in the environment variables.")
+        
+        # Json2Video API configuration
+        self.json2video_base_url = "https://api.json2video.com/v2"
+        self.headers = {
+            "x-api-key": self.json2video_api_key,
+            "Content-Type": "application/json"
+        }
+        
         self.output_dir = Config.VIDEO_OUTPUT_DIR
         if not self.output_dir:
             self.output_dir = os.path.join(os.getcwd(), 'output_videos')
         os.makedirs(self.output_dir, exist_ok=True)
-    
-    def create_youtube_shorts_video(self, script: str, audio_path: str, images: List[Dict] = None) -> str:
-        """Create a YouTube Shorts video using Json2Video for dynamic content generation"""
+  
+
+    def create_youtube_shorts_video(self, script: str, audio_path: str) -> str:
+        """Create a YouTube Shorts video using Json2Video and merge with audio using ffmpeg"""
         try:
-            video_filename = os.path.join(self.output_dir, f"youtube_shorts_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-            
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            raw_video_filename = os.path.join(self.output_dir, f"temp_video_{timestamp}.mp4")
+            final_video_filename = os.path.join(self.output_dir, f"youtube_shorts_v2_{timestamp}.mp4")
+
             # Clean and analyze script
             clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')
-            
+
             # Get audio duration
             audio_duration = self._get_audio_duration(audio_path) if audio_path else 30.0
-            
+
             # Create JSON template for Json2Video
             video_json = self._create_video_json_template(clean_script, audio_duration, audio_path)
-            
+
             # Generate video using Json2Video API
             video_url = self._generate_video_with_json2video(video_json)
-            
+
             if video_url:
-                # Download the generated video
-                downloaded_video = self._download_video(video_url, video_filename)
-                if downloaded_video:
-                    print(f"YouTube Shorts video created successfully: {downloaded_video}")
-                    return downloaded_video
-            
-            # Fallback to manual creation if Json2Video fails
-            print("Json2Video generation failed, falling back to manual creation...")
+                # Download the generated mute video
+                downloaded_video = self._download_video(video_url, raw_video_filename)
+                if downloaded_video and os.path.exists(audio_path):
+                    # Merge video and audio using ffmpeg
+                    merged = self._merge_video_audio_ffmpeg(raw_video_filename, audio_path, final_video_filename)
+                    if merged:
+                        os.remove(raw_video_filename)  # Clean up temp video
+                        return final_video_filename
+
+            # Fallback if video generation or merging fails
             return self._create_fallback_video(script, audio_path)
-            
+
         except Exception as e:
-            print(f"Error creating YouTube Shorts video with Json2Video: {e}")
             return self._create_fallback_video(script, audio_path)
+
+
+    # def create_youtube_shorts_video(self, script: str, audio_path: str) -> str:
+    #     """Create a YouTube Shorts video using Json2Video for dynamic content generation"""
+    #     try:
+    #         video_filename = os.path.join(self.output_dir, f"youtube_shorts_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
+            
+    #         # Clean and analyze script
+    #         clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')
+    #         # Get audio duration
+    #         audio_duration = self._get_audio_duration(audio_path) if audio_path else 30.0
+    #         # Create JSON template for Json2Video
+    #         video_json = self._create_video_json_template(clean_script, audio_duration, audio_path)
+    #         # Generate video using Json2Video API
+    #         video_url = self._generate_video_with_json2video(video_json)
+    #         if video_url:
+    #             # Download the generated video
+    #             downloaded_video = self._download_video(video_url, video_filename)
+    #             if downloaded_video:
+    #                 return downloaded_video
+            
+    #         # Fallback to manual creation if Json2Video fails
+    #         return self._create_fallback_video(script, audio_path)
+            
+    #     except Exception as e:
+    #         return self._create_fallback_video(script, audio_path)
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get the duration of the audio file in seconds"""
@@ -70,28 +109,14 @@ class VideoGeneratorV2:
         
         # Analyze script to determine theme and content type
         theme = self._analyze_script_theme(script)
-        
         # Create subtitle segments
         subtitle_segments = self._create_subtitle_segments(script, duration)
-        
         # Build Json2Video template
         video_json = {
             "width": 1080,
             "height": 1920,  # 9:16 aspect ratio for YouTube Shorts
-            "duration": duration,
             "fps": 30,
-            "background": self._get_background_config(theme),
-            "scenes": self._create_scenes(subtitle_segments, theme, duration),
-            "audio": {
-                "src": audio_path if audio_path and os.path.exists(audio_path) else None,
-                "volume": 1.0
-            },
-            "watermark": {
-                "text": "AI Generated",
-                "position": "bottom-right",
-                "opacity": 0.3,
-                "size": 20
-            }
+            "scenes": self._create_scenes(subtitle_segments, theme, audio_path),
         }
         
         return video_json
@@ -203,66 +228,63 @@ class VideoGeneratorV2:
         
         return segments
 
-    def _create_scenes(self, subtitle_segments: List[Dict], theme: str, total_duration: float) -> List[Dict]:
-        """Create scenes for Json2Video based on subtitle segments and theme"""
+    def _create_scenes(self, subtitle_segments: List[Dict], theme: str, audio_path: str) -> List[Dict]:
+        """Create scenes for JSON2Video based on subtitle segments and theme."""
         scenes = []
-        
+
         # Theme-specific visual elements
         visual_elements = self._get_theme_visual_elements(theme)
-        
         for i, segment in enumerate(subtitle_segments):
             scene = {
-                "start": segment['start_time'],
                 "duration": segment['duration'],
                 "elements": [
                     # Background animation element
                     {
-                        "type": "shape",
-                        "shape": "rectangle",
-                        "width": 1080,
-                        "height": 1920,
-                        "color": "transparent",
-                        "animation": {
-                            "type": visual_elements['background_animation'],
-                            "duration": segment['duration']
+                        "type": "component",
+                        # "component": visual_elements['background_animation'],
+                        "component": "basic/000", 
+                        "start": 0,
+                        "duration": segment['duration'],
+                        "settings": {
+                            "width": 1080,
+                            "height": 1920,
+                            "color": "transparent"
                         }
                     },
                     # Main text element
                     {
                         "type": "text",
+                        "style": "002",  # Using a predefined style ID
                         "text": segment['text'],
-                        "font": {
-                            "family": "Arial Bold",
-                            "size": 48,
+                        "start": 0,
+                        "duration": segment['duration'],
+                        "settings": {
+                            "font-family": "Arial",
+                            "font-size": "48px",
                             "color": "#ffffff",
-                            "weight": "bold"
-                        },
-                        "position": {
-                            "x": 540,  # Center horizontally
-                            "y": 1400,  # Lower third for mobile viewing
-                            "alignment": "center"
-                        },
-                        "background": {
-                            "color": "rgba(0,0,0,0.7)",
+                            "font-weight": "bold",
+                            "text-align": "center",
+                            "background-color": "rgba(0,0,0,0.7)",
                             "padding": 20,
-                            "borderRadius": 10
+                            "border-radius": 10,
+                            "shadow": 2,
+                            "word-wrap": {
+                                "enabled": True,
+                                "max-width": 900
+                            }
                         },
-                        "animation": {
-                            "type": "fadeIn",
-                            "duration": 0.5
-                        },
-                        "wordWrap": {
-                            "enabled": True,
-                            "maxWidth": 900
-                        }
+                        "x": 540,
+                        "y": 1400
                     },
                     # Decorative elements based on theme
-                    *self._get_theme_decorative_elements(theme, i)
+                    # *self._get_theme_decorative_elements(theme, i)
+                    *list(self._get_theme_decorative_elements(theme, i) or [])
                 ]
             }
             scenes.append(scene)
-        
         return scenes
+
+
 
     def _get_theme_visual_elements(self, theme: str) -> Dict:
         """Get visual elements configuration for theme"""
@@ -316,53 +338,74 @@ class VideoGeneratorV2:
         if theme == 'technology':
             decorative_elements.extend([
                 {
-                    "type": "shape",
-                    "shape": "circle",
-                    "width": 100,
-                    "height": 100,
-                    "color": visual_config['accent_color'],
-                    "position": {"x": 100, "y": 200 + (scene_index * 50)},
-                    "animation": {"type": "rotate", "duration": 3}
+                    "type": "component",
+                    "component": "basic/000",  # Replace with actual component ID for a circle
+                    "start": 0,
+                    "duration": 3,
+                    "x": 100,
+                    "y": 200 + (scene_index * 50),
+                    "settings": {
+                        "color": visual_config['accent_color'],
+                        "animation": "rotate"
+                    }
                 },
                 {
-                    "type": "shape",
-                    "shape": "rectangle",
-                    "width": 200,
-                    "height": 10,
-                    "color": visual_config['secondary_color'],
-                    "position": {"x": 880, "y": 300},
-                    "animation": {"type": "slideLeft", "duration": 2}
+                    "type": "component",
+                    "component": "basic/000",  # Replace with actual component ID for a rectangle
+                    "start": 0,
+                    "duration": 2,
+                    "x": 880,
+                    "y": 300,
+                    "settings": {
+                        "color": visual_config['secondary_color'],
+                        "animation": "slideLeft"
+                    }
                 }
             ])
         
         elif theme == 'business':
             decorative_elements.append({
-                "type": "shape",
-                "shape": "triangle",
-                "width": 80,
-                "height": 80,
-                "color": visual_config['accent_color'],
-                "position": {"x": 50, "y": 150},
-                "animation": {"type": "pulse", "duration": 2}
+                "type": "component",
+                "component": "basic/000",  # Replace with actual component ID for a triangle
+                "start": 0,
+                "duration": 2,
+                "x": 50,
+                "y": 150,
+                "settings": {
+                    "color": visual_config['accent_color'],
+                    "animation": "pulse"
+                }
             })
         
         elif theme == 'news':
             decorative_elements.extend([
                 {
                     "type": "text",
+                    "style": "002",  # Using a predefined style ID
                     "text": "BREAKING",
-                    "font": {"family": "Arial Bold", "size": 32, "color": visual_config['accent_color']},
-                    "position": {"x": 540, "y": 200, "alignment": "center"},
-                    "animation": {"type": "blink", "duration": 1}
+                    "start": 0,
+                    "duration": 1,
+                    "x": 540,
+                    "y": 200,
+                    "settings": {
+                        "font-family": "Arial Bold",
+                        "font-size": "32px",
+                        "color": visual_config['accent_color'],
+                        "text-align": "center",
+                        "animation": "blink"
+                    }
                 },
                 {
-                    "type": "shape",
-                    "shape": "rectangle",
-                    "width": 1080,
-                    "height": 5,
-                    "color": visual_config['accent_color'],
-                    "position": {"x": 0, "y": 250},
-                    "animation": {"type": "slideRight", "duration": 1.5}
+                    "type": "component",
+                    "component": "basic/000",  # Replace with actual component ID for a rectangle
+                    "start": 0,
+                    "duration": 1.5,
+                    "x": 0,
+                    "y": 250,
+                    "settings": {
+                        "color": visual_config['accent_color'],
+                        "animation": "slideRight"
+                    }
                 }
             ])
         
@@ -371,18 +414,16 @@ class VideoGeneratorV2:
     def _generate_video_with_json2video(self, video_json: Dict) -> Optional[str]:
         """Generate video using Json2Video API"""
         try:
-            print("Generating video with Json2Video API...")
+            # Create video project using direct API call
+            response = self._create_video_project(video_json)
             
-            # Create video project
-            response = self.json2video.create_video(video_json)
-            
-            if response and 'id' in response:
-                project_id = response['id']
-                print(f"Video project created with ID: {project_id}")
-                
-                # Poll for completion
-                video_url = self._wait_for_video_completion(project_id)
-                return video_url
+            if response and 'project' in response:
+                        project_id = response['project'] 
+                        print(f"Video project created with ID: {project_id}")
+                        
+                        # Poll for completion
+                        video_url = self._wait_for_video_completion(project_id)
+                        return video_url
             else:
                 print("Failed to create video project")
                 return None
@@ -391,22 +432,95 @@ class VideoGeneratorV2:
             print(f"Error generating video with Json2Video: {e}")
             return None
 
+    def _create_video_project(self, video_json: Dict) -> Optional[Dict]:
+        """Create a video project using Json2Video API"""
+        try:
+            url = f"{self.json2video_base_url}/movies"
+            payload = {
+                **video_json,
+                "quality": "high",
+                "width": 1080,
+                "height": 1920, 
+            }
+            
+            response = requests.post(
+                url, 
+                headers=self.headers, 
+                json=payload, 
+                timeout=300
+            )
+            
+            if response.status_code == 200 or response.status_code == 201:
+                return response.json()
+            else:
+                print(f"API Error: {response.status_code} - {response.text}")
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error creating video project: {e}")
+            return None
+
+    def _get_project_status(self, project_id: str) -> Optional[Dict]:
+        """Get the status of a video project"""
+        try:
+            url = f"{self.json2video_base_url}/movies?project={project_id}"
+            
+            response = requests.get(
+                url, 
+                headers=self.headers, 
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Status check error: {response.status_code} - {response.text}")
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            print(f"Request error checking status: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error checking project status: {e}")
+            return None
+
     def _wait_for_video_completion(self, project_id: str, max_wait_time: int = 300) -> Optional[str]:
         """Wait for video generation to complete and return download URL"""
-        import time
-        
         start_time = time.time()
+        
         while time.time() - start_time < max_wait_time:
             try:
-                status = self.json2video.get_project_status(project_id)
+                status_response = self._get_project_status(project_id)
                 
-                if status.get('status') == 'completed':
-                    return status.get('download_url')
-                elif status.get('status') == 'failed':
-                    print(f"Video generation failed: {status.get('error', 'Unknown error')}")
+                if not status_response:
+                    print("Failed to get project status")
+                    time.sleep(10)
+                    continue
+                
+                status = status_response.get('status', '').lower()
+                
+                if status == 'completed' or status == 'done':
+                    download_url = status_response.get('url') or status_response.get('download_url')
+                    if download_url:
+                        print("Video generation completed successfully!")
+                        return download_url
+                    else:
+                        print("Video completed but no download URL found")
+                        return None
+                        
+                elif status == 'failed' or status == 'error':
+                    error_msg = status_response.get('error', 'Unknown error')
+                    print(f"Video generation failed: {error_msg}")
                     return None
                 
-                print(f"Video generation in progress... Status: {status.get('status', 'unknown')}")
+                elif status in ['processing', 'rendering', 'queued', 'pending']:
+                    print(f"Video generation in progress... Status: {status}")
+                else:
+                    print(f"Unknown status: {status}")
+                
                 time.sleep(10)  # Wait 10 seconds before checking again
                 
             except Exception as e:
@@ -421,18 +535,40 @@ class VideoGeneratorV2:
         try:
             print(f"Downloading video from: {video_url}")
             
-            response = requests.get(video_url, stream=True, timeout=60)
+            # Add headers for the download request
+            download_headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            
+            response = requests.get(
+                video_url, 
+                headers=download_headers,
+                stream=True, 
+                timeout=60
+            )
             response.raise_for_status()
+            
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(output_filename), exist_ok=True)
             
             with open(output_filename, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                    if chunk:
+                        f.write(chunk)
             
-            print(f"Video downloaded successfully: {output_filename}")
-            return output_filename
+            # Verify file was downloaded
+            if os.path.exists(output_filename) and os.path.getsize(output_filename) > 0:
+                print(f"Video downloaded successfully: {output_filename}")
+                return output_filename
+            else:
+                print("Downloaded file is empty or doesn't exist")
+                return None
             
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             print(f"Error downloading video: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error downloading video: {e}")
             return None
 
     def _create_fallback_video(self, script: str, audio_path: str) -> str:
@@ -441,8 +577,14 @@ class VideoGeneratorV2:
             video_filename = os.path.join(self.output_dir, f"fallback_shorts_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
             
             # Clean script for display
-            clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')[:150] + "..."
+            clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')[:150]
+            if len(script) > 150:
+                clean_script += "..."
+            
+            # Escape special characters for FFmpeg
             escaped_text = re.sub(r'[^\w\s.,!?\-]', ' ', clean_script)
+            escaped_text = escaped_text.replace("'", "\\'")
+            escaped_text = escaped_text.replace('"', '\\"')
             
             if audio_path and os.path.exists(audio_path):
                 audio_duration = self._get_audio_duration(audio_path)
@@ -479,7 +621,7 @@ class VideoGeneratorV2:
                     video_filename
                 ]
             
-            subprocess.run(cmd, check=True)
+            subprocess.run(cmd, check=True, capture_output=True)
             print(f"Fallback video created: {video_filename}")
             return video_filename
             
