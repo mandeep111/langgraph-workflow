@@ -64,31 +64,24 @@ class VideoGeneratorV2:
         except Exception as e:
             return self._create_fallback_video(script, audio_path)
 
-
-    # def create_youtube_shorts_video(self, script: str, audio_path: str) -> str:
-    #     """Create a YouTube Shorts video using Json2Video for dynamic content generation"""
-    #     try:
-    #         video_filename = os.path.join(self.output_dir, f"youtube_shorts_v2_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4")
-            
-    #         # Clean and analyze script
-    #         clean_script = script.replace('[PAUSE]', ' ').replace('\n', ' ')
-    #         # Get audio duration
-    #         audio_duration = self._get_audio_duration(audio_path) if audio_path else 30.0
-    #         # Create JSON template for Json2Video
-    #         video_json = self._create_video_json_template(clean_script, audio_duration, audio_path)
-    #         # Generate video using Json2Video API
-    #         video_url = self._generate_video_with_json2video(video_json)
-    #         if video_url:
-    #             # Download the generated video
-    #             downloaded_video = self._download_video(video_url, video_filename)
-    #             if downloaded_video:
-    #                 return downloaded_video
-            
-    #         # Fallback to manual creation if Json2Video fails
-    #         return self._create_fallback_video(script, audio_path)
-            
-    #     except Exception as e:
-    #         return self._create_fallback_video(script, audio_path)
+    def _merge_video_audio_ffmpeg(self, video_path: str, audio_path: str, output_path: str) -> bool:
+        """Merge video and audio using ffmpeg"""
+        try:
+            command = [
+                'ffmpeg',
+                '-y',  # Overwrite output if exists
+                '-i', video_path,
+                '-i', audio_path,
+                '-c:v', 'copy',
+                '-c:a', 'aac',
+                '-shortest',
+                output_path
+            ]
+            subprocess.run(command, check=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"FFmpeg error: {e}")
+            return False
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """Get the duration of the audio file in seconds"""
@@ -234,15 +227,19 @@ class VideoGeneratorV2:
 
         # Theme-specific visual elements
         visual_elements = self._get_theme_visual_elements(theme)
+        
         for i, segment in enumerate(subtitle_segments):
+            if segment['duration'] < 0.25:
+                print(f"⏩ Skipping scene #{i+1} with duration {segment['duration']}s (less than 0.25s)")
+                continue  # Skip this scene
+            
             scene = {
                 "duration": segment['duration'],
                 "elements": [
                     # Background animation element
                     {
                         "type": "component",
-                        # "component": visual_elements['background_animation'],
-                        "component": "basic/000", 
+                        "component": "basic/100",  # fallback if visual_elements['background_animation'] not used
                         "start": 0,
                         "duration": segment['duration'],
                         "settings": {
@@ -254,7 +251,7 @@ class VideoGeneratorV2:
                     # Main text element
                     {
                         "type": "text",
-                        "style": "002",  # Using a predefined style ID
+                        "style": "002",
                         "text": segment['text'],
                         "start": 0,
                         "duration": segment['duration'],
@@ -277,14 +274,12 @@ class VideoGeneratorV2:
                         "y": 1400
                     },
                     # Decorative elements based on theme
-                    # *self._get_theme_decorative_elements(theme, i)
                     *list(self._get_theme_decorative_elements(theme, i) or [])
                 ]
             }
             scenes.append(scene)
+        
         return scenes
-
-
 
     def _get_theme_visual_elements(self, theme: str) -> Dict:
         """Get visual elements configuration for theme"""
@@ -339,7 +334,7 @@ class VideoGeneratorV2:
             decorative_elements.extend([
                 {
                     "type": "component",
-                    "component": "basic/000",  # Replace with actual component ID for a circle
+                    "component": "basic/100",  # Replace with actual component ID for a circle
                     "start": 0,
                     "duration": 3,
                     "x": 100,
@@ -351,7 +346,7 @@ class VideoGeneratorV2:
                 },
                 {
                     "type": "component",
-                    "component": "basic/000",  # Replace with actual component ID for a rectangle
+                    "component": "basic/100",  # Replace with actual component ID for a rectangle
                     "start": 0,
                     "duration": 2,
                     "x": 880,
@@ -366,7 +361,7 @@ class VideoGeneratorV2:
         elif theme == 'business':
             decorative_elements.append({
                 "type": "component",
-                "component": "basic/000",  # Replace with actual component ID for a triangle
+                "component": "basic/100",  # Replace with actual component ID for a triangle
                 "start": 0,
                 "duration": 2,
                 "x": 50,
@@ -494,34 +489,36 @@ class VideoGeneratorV2:
         while time.time() - start_time < max_wait_time:
             try:
                 status_response = self._get_project_status(project_id)
-                
+                print(f"status_response: {status_response}")
                 if not status_response:
                     print("Failed to get project status")
                     time.sleep(10)
                     continue
                 
-                status = status_response.get('status', '').lower()
-                
-                if status == 'completed' or status == 'done':
-                    download_url = status_response.get('url') or status_response.get('download_url')
+                movie = status_response.get('movie', {})
+                status = movie.get('status', '').lower()
+
+                print(f"Current status: {status}")
+                if status in ['completed', 'done']:
+                    download_url = movie.get('url') or status_response.get('download_url')
                     if download_url:
                         print("Video generation completed successfully!")
                         return download_url
                     else:
                         print("Video completed but no download URL found")
                         return None
-                        
-                elif status == 'failed' or status == 'error':
-                    error_msg = status_response.get('error', 'Unknown error')
+
+                elif status in ['failed', 'error']:
+                    error_msg = movie.get('message', 'Unknown error')
                     print(f"Video generation failed: {error_msg}")
                     return None
-                
-                elif status in ['processing', 'rendering', 'queued', 'pending']:
+
+                elif status in ['processing', 'rendering', 'queued', 'pending', 'running']:
                     print(f"Video generation in progress... Status: {status}")
                 else:
                     print(f"Unknown status: {status}")
-                
-                time.sleep(10)  # Wait 10 seconds before checking again
+
+                time.sleep(10)
                 
             except Exception as e:
                 print(f"Error checking video status: {e}")

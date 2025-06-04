@@ -17,65 +17,59 @@ class ScriptGenerator:
         """Generate YouTube Shorts script from articles (optimized for 9:16 vertical format)"""
         # Get fresh articles and sort by importance/recency
         current_time = datetime.now()
-        # top_articles = sorted(articles, key=lambda x: x.get('importance', 5), reverse=True)[:4]
+        top_articles = sorted(articles, key=lambda x: x.get('importance', 5), reverse=True)[:4]
         
-        # articles_text = "\n".join([
-        #     f"- {article['title']}: {article.get('enhanced_summary', article['summary'])}"
-        #     for article in top_articles
-        # ])
+        articles_text = "\n".join([
+            f"- {article['title']}: {article.get('enhanced_summary', article['summary'])}"
+            for article in top_articles
+        ])
         
-        # prompt = f"""
-        # Create a 45-60 second YouTube Shorts script for "AI News Update" covering these breaking stories:
+        prompt = f"""
+        Create a 45-60 second YouTube Shorts script for "AI News Update" covering these breaking stories:
         
-        # {articles_text}
+        {articles_text}
         
-        # Requirements for YouTube Shorts (9:16 vertical format):
-        # - Hook viewers in first 3 seconds with shocking/intriguing opener
-        # - Fast-paced, energetic delivery 
-        # - Use short, punchy sentences
-        # - Include trending phrases like "You won't believe this", "This changes everything"
-        # - Add engagement triggers: "Wait for it", "But here's the crazy part"
-        # - Visual cues: [PAUSE] for text changes, [EMPHASIS] for key points
-        # - End with strong CTA: "Follow for daily AI updates!"
-        # - Keep each segment under 15 words for readability
-        # - Current timestamp: {current_time.strftime('%B %d, %Y at %I:%M %p')}
+        Requirements for YouTube Shorts (9:16 vertical format):
+        - Hook viewers in first 3 seconds with shocking/intriguing opener
+        - Fast-paced, energetic delivery 
+        - Use short, punchy sentences
+        - Include trending phrases like "You won't believe this", "This changes everything"
+        - Add engagement triggers: "Wait for it", "But here's the crazy part"
+        - Visual cues: [PAUSE] for text changes, [EMPHASIS] for key points
+        - End with strong CTA: "Follow for daily AI updates!"
+        - Keep each segment under 15 words for readability
+        - Current timestamp: {current_time.strftime('%B %d, %Y at %I:%M %p')}
         
-        # IMPORTANT: Write ONLY the narration text. Do NOT include:
-        # - Stage directions like [OPENING SCENE], [HOST], [SCENE], etc.
-        # - Character names or roles
-        # - Camera directions
-        # - Just pure spoken content that will be read aloud
+        IMPORTANT: Write ONLY the narration text. Do NOT include:
+        - Stage directions like [OPENING SCENE], [HOST], [SCENE], etc.
+        - Character names or roles
+        - Camera directions
+        - Just pure spoken content that will be read aloud
         
-        # Make it feel urgent and fresh - like breaking news happening RIGHT NOW.
-        # """
-        
-        # response = openai.chat.completions.create(
-        #     model="gpt-4",
-        #     messages=[{"role": "user", "content": prompt}],
-        #     max_tokens=600,
-        #     temperature=0.8  # Higher creativity for engaging content
-        # )
-        
-        # script = response.choices[0].message.content
-        
-        # # Clean up any remaining stage directions that might have slipped through
-        # script = self._clean_script_for_audio(script)
-        
-        # # Save script with timestamp to ensure uniqueness
-        # script_filename = os.path.join(self.output_dir, f"youtube_shorts_script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
-        # with open(script_filename, 'w', encoding='utf-8') as f:
-        #     f.write(f"Generated at: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        #     f.write("="*50 + "\n\n")
-        #     f.write(script)
-        
-        # print(f"YouTube Shorts script generated: {script_filename}")
-        # return script
-        script = """Welcome to your daily AI news update! In just 60 seconds, we'll cover the most exciting developments in artificial intelligence.\n\n"
-            "First up, a groundbreaking AI model has just been released that can generate realistic human speech with unprecedented clarity. This could revolutionize voice assistants and customer service bots!\n\n"
-            "Next, researchers have unveiled a new AI system that can predict weather patterns with 95% accuracy. Imagine planning your day with this level of precision!\n\n"
-            "And finally, a startup has launched an AI tool that helps artists create stunning digital art in minutes. Creativity just got a major upgrade!\n\n"
-            "Stay tuned for more updates and don't forget to follow us for your daily dose of AI news!"
+        Make it feel urgent and fresh - like breaking news happening RIGHT NOW.
         """
+        
+        response = openai.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.8  # Higher creativity for engaging content
+        )
+        
+        script = response.choices[0].message.content
+        
+        # Clean up any remaining stage directions that might have slipped through
+        script = self._clean_script_for_audio(script)
+        
+        # Save script with timestamp to ensure uniqueness
+        script_filename = os.path.join(self.output_dir, f"youtube_shorts_script_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+        with open(script_filename, 'w', encoding='utf-8') as f:
+            f.write(f"Generated at: {current_time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("="*50 + "\n\n")
+            f.write(script)
+        
+        print(f"YouTube Shorts script generated: {script_filename}")
+        return script
         
         # Clean up any remaining stage directions that might have slipped through
         script = self._clean_script_for_audio(script)

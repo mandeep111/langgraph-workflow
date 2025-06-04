@@ -38,21 +38,19 @@ class AudioGenerator:
         
         # Use provided voice_id or fall back to config default
         selected_voice_id = voice_id or Config.ELEVENLABS_VOICE_ID
-        
+        print(f"Using voice ID: {selected_voice_id}")
         try:
             # Clean script for audio (remove pause markers and stage directions)
-            clean_script = ScriptGenerator._clean_script_for_audio(script)
-            
+            clean_script = self._clean_script_for_audio(script).replace('\n', ' ')
+            print(f"🎤 Cleaned script for audio generation: {clean_script[:100]}...")  # Preview first 100 chars
             # Generate speech using the new API with configurable voice
-            audio = self.client.generate(
+            audio = self.client.text_to_speech.convert(
                 text=clean_script,
-                voice=Voice(
-                    voice_id=selected_voice_id,
-                    settings=VoiceSettings(stability=0.71, similarity_boost=0.5)
-                ),
-                model="eleven_monolingual_v1"
+                voice_id=selected_voice_id,
+                  model_id="eleven_multilingual_v2"
             )
             
+            print(f"🎤 Generated audio with voice ID {selected_voice_id}")
             audio_filename = os.path.join(self.output_dir, f"youtube_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3")
             
             # Save the audio
