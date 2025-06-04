@@ -62,6 +62,7 @@ class VideoGeneratorV2:
             return self._create_fallback_video(script, audio_path)
 
         except Exception as e:
+            print(f"Error creating YouTube Shorts video: {e}")
             return self._create_fallback_video(script, audio_path)
 
     def _merge_video_audio_ffmpeg(self, video_path: str, audio_path: str, output_path: str) -> bool:
@@ -109,9 +110,9 @@ class VideoGeneratorV2:
             "width": 1080,
             "height": 1920,  # 9:16 aspect ratio for YouTube Shorts
             "fps": 30,
-            "scenes": self._create_scenes(subtitle_segments, theme, audio_path),
+            "scenes": self._create_scenes(subtitle_segments),
         }
-        
+        print(f"Generated {len(video_json['scenes'])} scenes for the video")
         return video_json
 
     def _analyze_script_theme(self, script: str) -> str:
@@ -221,34 +222,39 @@ class VideoGeneratorV2:
         
         return segments
 
-    def _create_scenes(self, subtitle_segments: List[Dict], theme: str, audio_path: str) -> List[Dict]:
+    def _create_scenes(self, subtitle_segments: List[Dict]) -> List[Dict]:
         """Create scenes for JSON2Video based on subtitle segments and theme."""
         scenes = []
-
-        # Theme-specific visual elements
-        visual_elements = self._get_theme_visual_elements(theme)
+        
+        # Define the components to cycle through
+        component_cycle = ["basic/051", "basic/120", "basic/000", "basic/051"]
+        bg_color = ["#0C0C45", "#1c3475", "#0f0f23", "#1a1a2e"]
         
         for i, segment in enumerate(subtitle_segments):
             if segment['duration'] < 0.25:
                 print(f"⏩ Skipping scene #{i+1} with duration {segment['duration']}s (less than 0.25s)")
                 continue  # Skip this scene
             
+            # Get the component for this scene using circular indexing
+            current_component = component_cycle[i % len(component_cycle)]
+            background_color = bg_color[i % len(bg_color)]
             scene = {
                 "duration": segment['duration'],
+                "background-color": background_color,
                 "elements": [
-                    # Background animation element
+                    # Background animation element with cycling component
                     {
                         "type": "component",
-                        "component": "basic/100",  # fallback if visual_elements['background_animation'] not used
+                        "component": current_component,
                         "start": 0,
-                        "duration": segment['duration'],
+                        "duration": 5, # change duration every 5 seconds
                         "settings": {
                             "width": 1080,
                             "height": 1920,
                             "color": "transparent"
                         }
                     },
-                    # Main text element
+                    # Main text element with text/002 style
                     {
                         "type": "text",
                         "style": "002",
@@ -272,140 +278,13 @@ class VideoGeneratorV2:
                         },
                         "x": 540,
                         "y": 1400
-                    },
-                    # Decorative elements based on theme
-                    *list(self._get_theme_decorative_elements(theme, i) or [])
+                    }
                 ]
             }
+            
             scenes.append(scene)
-        
         return scenes
-
-    def _get_theme_visual_elements(self, theme: str) -> Dict:
-        """Get visual elements configuration for theme"""
-        elements = {
-            'technology': {
-                'background_animation': 'matrix',
-                'accent_color': '#00ff00',
-                'secondary_color': '#0066cc'
-            },
-            'business': {
-                'background_animation': 'slideUp',
-                'accent_color': '#gold',
-                'secondary_color': '#navy'
-            },
-            'science': {
-                'background_animation': 'particle',
-                'accent_color': '#00ccff',
-                'secondary_color': '#66ff99'
-            },
-            'health': {
-                'background_animation': 'pulse',
-                'accent_color': '#ff6b6b',
-                'secondary_color': '#4ecdc4'
-            },
-            'education': {
-                'background_animation': 'bounce',
-                'accent_color': '#ffa726',
-                'secondary_color': '#ab47bc'
-            },
-            'news': {
-                'background_animation': 'flash',
-                'accent_color': '#ff5722',
-                'secondary_color': '#ffeb3b'
-            },
-            'general': {
-                'background_animation': 'fade',
-                'accent_color': '#ffffff',
-                'secondary_color': '#cccccc'
-            }
-        }
-        
-        return elements.get(theme, elements['general'])
-
-    def _get_theme_decorative_elements(self, theme: str, scene_index: int) -> List[Dict]:
-        """Get decorative elements for specific theme"""
-        visual_config = self._get_theme_visual_elements(theme)
-        
-        decorative_elements = []
-        
-        # Add theme-specific decorative elements
-        if theme == 'technology':
-            decorative_elements.extend([
-                {
-                    "type": "component",
-                    "component": "basic/100",  # Replace with actual component ID for a circle
-                    "start": 0,
-                    "duration": 3,
-                    "x": 100,
-                    "y": 200 + (scene_index * 50),
-                    "settings": {
-                        "color": visual_config['accent_color'],
-                        "animation": "rotate"
-                    }
-                },
-                {
-                    "type": "component",
-                    "component": "basic/100",  # Replace with actual component ID for a rectangle
-                    "start": 0,
-                    "duration": 2,
-                    "x": 880,
-                    "y": 300,
-                    "settings": {
-                        "color": visual_config['secondary_color'],
-                        "animation": "slideLeft"
-                    }
-                }
-            ])
-        
-        elif theme == 'business':
-            decorative_elements.append({
-                "type": "component",
-                "component": "basic/100",  # Replace with actual component ID for a triangle
-                "start": 0,
-                "duration": 2,
-                "x": 50,
-                "y": 150,
-                "settings": {
-                    "color": visual_config['accent_color'],
-                    "animation": "pulse"
-                }
-            })
-        
-        elif theme == 'news':
-            decorative_elements.extend([
-                {
-                    "type": "text",
-                    "style": "002",  # Using a predefined style ID
-                    "text": "BREAKING",
-                    "start": 0,
-                    "duration": 1,
-                    "x": 540,
-                    "y": 200,
-                    "settings": {
-                        "font-family": "Arial Bold",
-                        "font-size": "32px",
-                        "color": visual_config['accent_color'],
-                        "text-align": "center",
-                        "animation": "blink"
-                    }
-                },
-                {
-                    "type": "component",
-                    "component": "basic/000",  # Replace with actual component ID for a rectangle
-                    "start": 0,
-                    "duration": 1.5,
-                    "x": 0,
-                    "y": 250,
-                    "settings": {
-                        "color": visual_config['accent_color'],
-                        "animation": "slideRight"
-                    }
-                }
-            ])
-        
-        return decorative_elements
-
+    
     def _generate_video_with_json2video(self, video_json: Dict) -> Optional[str]:
         """Generate video using Json2Video API"""
         try:
