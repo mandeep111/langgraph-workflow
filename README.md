@@ -70,11 +70,8 @@ The project can be run as an API using Uvicorn.
 
 2. **Run the API**:
    ```bash
-   uvicorn scripts.runner:main --reload
+   uv run runner.py
    ```
-
-3. **Access the API**:
-   Open your browser and navigate to `http://127.0.0.1:8000`.
 
 ---
 
