@@ -59,6 +59,21 @@ export UNSPLASH_API_KEY="your-unsplash-api-key"
 
 ---
 
+## Running the Pipeline Directly
+If you prefer to run the pipeline directly without Uvicorn:
+1. **Run the Pipeline**:
+   ```bash
+   python scripts/runner.py
+   ```
+
+2. **Outputs**:
+   - **Excel Report**: Saved in the `VIDEO_OUTPUT_DIR`.
+   - **Audio File**: Generated narration saved in the `VIDEO_OUTPUT_DIR`.
+   - **Video File**: Final video saved in the `VIDEO_OUTPUT_DIR`.
+
+---
+
+
 ## Running the Project
 ### Using Uvicorn
 The project can be run as an API using Uvicorn.
@@ -72,20 +87,6 @@ The project can be run as an API using Uvicorn.
    ```bash
    uv run runner.py
    ```
-
----
-
-## Running the Pipeline Directly
-If you prefer to run the pipeline directly without Uvicorn:
-1. **Run the Pipeline**:
-   ```bash
-   python scripts/runner.py
-   ```
-
-2. **Outputs**:
-   - **Excel Report**: Saved in the `VIDEO_OUTPUT_DIR`.
-   - **Audio File**: Generated narration saved in the `VIDEO_OUTPUT_DIR`.
-   - **Video File**: Final video saved in the `VIDEO_OUTPUT_DIR`.
 
 ---
 
@@ -126,6 +127,3 @@ export UNSPLASH_API_KEY="your-unsplash-api-key"
    Verify the payload structure and API key validity.
 
 ---
-
-## License
-This project is licensed under the MIT License.
